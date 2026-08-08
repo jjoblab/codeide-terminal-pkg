@@ -1,71 +1,131 @@
-name: Generate bootstrap archives (android-7)
+name: Build Bootstrap Archives
 
 on:
-  schedule:
-    - cron: "0 0 * * 0"
   workflow_dispatch:
-
-permissions: {} # none
+  push:
+    tags:
+      - 'bootstrap-*'
 
 concurrency:
   group: ${{ github.workflow }}
-  cancel-in-progress: true
+  cancel-in-progress: false
 
 jobs:
   build:
     permissions:
-      contents: read # actions/upload-artifact doesn't need contents: write
-    runs-on: ubuntu-slim
+      contents: read
+    runs-on: ubuntu-latest
     strategy:
       matrix:
+        # build-bootstraps.sh compile depuis les sources du repo (pas de
+        # téléchargement de .deb précompilés). Supporte aarch64, arm, i686,
+        # x86_64. Pour CodeIDE, on se limite aux 2 archs utiles (vrais
+        # appareils Android) pour réduire le temps de CI.
         arch:
           - aarch64
           - arm
-          - i686
-          - x86_64
-    if: github.repository == 'termux/termux-packages'
     steps:
-      - name: Git clone
-        uses: actions/checkout@v7
-      - name: Create bootstrap archive
-        run: ./scripts/generate-bootstraps.sh --architectures ${{ matrix.arch }}
-      - name: Store artifacts
-        uses: actions/upload-artifact@v6
+      - uses: actions/checkout@v4
+
+      - name: Build bootstrap natif (jo.codeide, depuis les sources)
+        # ★ CodeIDE — build NATIF depuis les sources de ce repo, avec
+        # TERMUX_APP_PACKAGE=jo.codeide (cf. scripts/properties.sh).
+        #
+        # On n'utilise PAS scripts/generate-bootstraps.sh. Ce script télécharge
+        # des .deb PRÉ-COMPILÉS depuis le dépôt APT officiel de Termux
+        # (packages-cf.termux.dev), lesquels ont été buildés avec
+        # TERMUX_APP_PACKAGE=com.termux. C'était la cause des résidus
+        # "com.termux" dans le zip et des erreurs "permission denied /
+        # répertoire ne correspond pas" lors de `pkg install`.
+        #
+        # scripts/build-bootstraps.sh compile chaque paquet DEPUIS LES SOURCES
+        # de ce repo via build-package.sh (qui source properties.sh, où
+        # TERMUX_APP_PACKAGE="jo.codeide"). Aucun binary-patch nécessaire :
+        # les chemins jo.codeide sont natifs dans les binaires ELF.
+        #
+        # build-bootstraps.sh doit tourner dans l'image Docker officielle
+        # ghcr.io/termux/package-builder (NDK/SDK Android préinstallés),
+        # montée sur /home/builder/termux-packages — exactement ce que fait
+        # scripts/run-docker.sh.
+        run: ./scripts/run-docker.sh ./scripts/build-bootstraps.sh --architectures ${{ matrix.arch }}
+
+      - name: Verify zip
+        run: |
+          set -euo pipefail
+          ls -la bootstrap-*.zip
+          echo "Entries: $(unzip -l bootstrap-*.zip | tail -1)"
+          echo "Has bin/bash: $(unzip -l bootstrap-*.zip | grep -c 'bin/bash')"
+          SIZE=$(stat -c%s bootstrap-*.zip)
+          echo "Size: $SIZE bytes"
+          if [ "$SIZE" -lt 10000000 ]; then
+            echo "❌ ERREUR : bootstrap trop petit ($SIZE < 10 MB)"
+            exit 1
+          fi
+          echo "✓ Taille OK"
+          # Filet de sécurité : vérifie qu'aucune trace de com.termux ne
+          # subsiste dans le zip (ELF ou texte). Si on en trouve, le build
+          # n'est pas réellement natif jo.codeide — on fait échouer le job
+          # volontairement pour qu'on l'investigue.
+          python3 -c "
+          import zipfile, sys
+          count = 0
+          with zipfile.ZipFile('bootstrap-${{ matrix.arch }}.zip') as z:
+              for info in z.infolist():
+                  if info.is_dir(): continue
+                  data = z.read(info.filename)
+                  count += data.count(b'com.termux')
+          if count > 0:
+              print(f'❌ {count} occurrences de com.termux trouvées dans le zip')
+              print('Le build n\'est pas réellement natif jo.codeide.')
+              sys.exit(1)
+          print('✓ Aucune occurrence com.termux — bootstrap natif jo.codeide')
+          "
+
+      - uses: actions/upload-artifact@v4
         with:
-          name: bootstrap-archives-${{ matrix.arch }}-${{ github.sha }}
-          path: "*.zip"
+          name: bootstrap-${{ matrix.arch }}
+          path: "bootstrap-*.zip"
+
   publish:
     permissions:
-      contents: write # for git push
+      contents: write
     needs: build
-    runs-on: ubuntu-slim
+    runs-on: ubuntu-latest
     steps:
-      - name: Git clone
-        uses: actions/checkout@v7
+      - uses: actions/checkout@v4
         with:
           fetch-depth: 0
-      - name: Fetch bootstrap archives
-        uses: actions/download-artifact@v7
+      - uses: actions/download-artifact@v4
         with:
-          merge-multiple: true
           path: ./
-      - name: Create new tag
-        id: get_tag
+          merge-multiple: true
+      - name: Create tag name
+        id: tag
+        run: echo "name=bootstrap-$(date '+%Y.%m.%d')-r1" >> $GITHUB_OUTPUT
+      - name: Compute SHA256
+        id: sha
         run: |
-          new_tag="bootstrap-$(date "+%Y.%m.%d")"
-          existing_tag_revision=$(git tag | grep "$new_tag" | sort -r | head -n 1 | cut -d- -f3 | cut -dr -f2)
-          if [ -n "$existing_tag_revision" ]; then
-            tag_rev=$((existing_tag_revision + 1))
-          else
-            tag_rev=1
-          fi
-          new_tag="${new_tag}-r${tag_rev}+apt.android-7"
-          echo "tag_name=$new_tag" >> $GITHUB_OUTPUT
-      - name: Publish bootstrap zips to GitHub release
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          gh release create ${{ steps.get_tag.outputs.tag_name }} --title "Bootstrap archives for Termux application (apt.android-7)"
-          for file in *.zip; do
-            gh release upload ${{ steps.get_tag.outputs.tag_name }} "$file"
-          done
+          echo "aarch64=$(sha256sum bootstrap-aarch64.zip | awk '{print $1}')" >> $GITHUB_OUTPUT
+          echo "arm=$(sha256sum bootstrap-arm.zip | awk '{print $1}')" >> $GITHUB_OUTPUT
+      - name: Create Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.tag.outputs.name }}
+          name: "CodeIDE Bootstrap ${{ steps.tag.outputs.name }}"
+          files: "bootstrap-*.zip"
+          body: |
+            # CodeIDE Bootstrap — ${{ steps.tag.outputs.name }}
+
+            Bootstrap **nativement compilé** avec `TERMUX_APP_PACKAGE=jo.codeide`.
+            Tous les chemins dans les binaires ELF pointent vers
+            `/data/data/jo.codeide/files/usr/...`.
+
+            **Aucun binary-patch, aucun workaround runtime.** Les paquets
+            sont buildés nativement avec jo.codeide depuis les sources de ce repo.
+
+            ## SHA256
+
+            | Arch | SHA256 |
+            |------|--------|
+            | aarch64 | `${{ steps.sha.outputs.aarch64 }}` |
+            | arm | `${{ steps.sha.outputs.arm }}` |

@@ -1,0 +1,65 @@
+# Liste des paquets à compiler pour le dépôt APT CodeIDE.
+# Un paquet par ligne. Les commentaires commencent par #.
+# Modifie cette liste selon tes besoins, puis déclenche le workflow
+# build-packages.yml.
+#
+# Paquets de base (déjà dans le bootstrap, mais à republier pour pkg install)
+bash
+libbz2
+coreutils
+dash
+diffutils
+findutils
+gawk
+grep
+gzip
+less
+procps
+psmisc
+sed
+tar
+termux-core
+termux-exec
+termux-keyring
+termux-tools
+util-linux
+
+# Outils de build essentiels
+make
+pkg-config
+libllvm
+cmake
+ninja
+autoconf
+automake
+libtool
+
+# Outils utilisateur courants
+git
+libcurl
+wget
+jq
+file
+which
+nano
+vim
+openssh
+ca-certificates
+gnupg
+unzip
+zip
+brotli
+zstd
+xxhash
+
+# Langages
+python
+python-pip
+nodejs
+
+# Réseau
+net-tools
+inetutils
+
+# Archive
+unrar

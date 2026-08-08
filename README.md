@@ -1,54 +1,87 @@
-# Termux packages
+# CodeIDE Packages
 
-![GitHub repo size](https://img.shields.io/github/repo-size/termux/termux-packages)
-[![Packages last build status](https://github.com/termux/termux-packages/actions/workflows/packages.yml/badge.svg?branch=master)](https://github.com/termux/termux-packages/actions)
-[![Docker image status](https://github.com/termux/termux-packages/workflows/Docker%20image/badge.svg)](https://hub.docker.com/r/termux/package-builder)
-[![Repology metadata](https://github.com/termux/repology-metadata/workflows/Repology%20metadata/badge.svg)](https://repology.org/repository/termux)
+Fork de [termux/termux-packages](https://github.com/termux/termux-packages)
+pour l'application **CodeIDE** (`jo.codeide`).
 
-[![Join the Termux Discord server](https://img.shields.io/discord/641256914684084234.svg?label=&logo=discord&logoColor=ffffff&color=5865F2)](https://discord.gg/HXpF69X)
-[![Join the Termux space on Matrix](https://img.shields.io/badge/Matrix-%E2%80%8B?style=plastic&logo=matrix&logoColor=white&color=green)](https://matrix.to/#/#Termux:matrix.org)
-[![Join the Termux server on Telegram](https://img.shields.io/badge/Telegram-%E2%80%8B?style=plastic&logo=telegram&logoColor=white&color=blue)](https://t.me/termux24x7)
-[![Official subreddit](https://img.shields.io/badge/Reddit-%E2%80%8B?style=plastic&logo=reddit&logoColor=white&color=red)](https://www.reddit.com/r/termux/)
+Ce repo contient les scripts et patches pour compiler les paquets CodeIDE
+depuis les sources, avec `TERMUX_APP_PACKAGE=jo.codeide` — tous les chemins
+dans les binaires ELF pointent nativement vers `/data/data/jo.codeide/...`,
+sans binary-patch runtime.
 
-[![Repository status](https://repology.org/badge/repository-big/termux.svg)](https://repology.org/repository/termux)
+## Différences avec upstream Termux
 
-<img src=".github/static/hosted-by-hetzner.png" alt="Hosted by Hetzner" width="128px"></img>
+- **Package name** : `com.termux` → `jo.codeide` (cf. `scripts/properties.sh`)
+- **Dépôt APT** : publie vers GitHub Pages
+  `https://jjoblab.github.io/codeide-terminal-pkg/apt/codeide-main` au lieu
+  de `packages-cf.termux.dev`
+- **Bootstrap** : utilise `build-bootstraps.sh` (build natif depuis les
+  sources) au lieu de `generate-bootstraps.sh` (qui télécharge des `.deb`
+  précompilés Termux)
+- **Workflows** : simplifiés pour CodeIDE — `bootstrap_archives.yml` +
+  `build-packages.yml` uniquement. Les workflows CodeQL, dependabot,
+  golang/zig validation, etc. ont été supprimés.
 
-This project contains scripts and patches to build packages for the [Termux](https://github.com/termux/termux-app)
-Android application.
+## Workflows GitHub Actions
 
-Quick how-to about Termux package management is available at [Package Management](https://github.com/termux/termux-packages/wiki/Package-Management). It also has info on how to fix **`repository is under maintenance or down`** errors when running `apt` or `pkg` commands.
+### `bootstrap_archives.yml`
+Build le bootstrap (archive zip embarquée au premier lancement de CodeIDE).
+- Compile depuis les sources via `build-bootstraps.sh` + `run-docker.sh`
+- Architectures : `aarch64`, `arm`
+- Publie une Release GitHub avec les zips + SHA256
+- Déclencheur : `workflow_dispatch` ou push d'un tag `bootstrap-*`
 
-## Contributing
+### `build-packages.yml`
+Build les paquets listés dans `packages.txt` et publie le dépôt APT sur
+GitHub Pages.
+- Compile depuis les sources via `build-package.sh` (sans `-I` — pas de
+  téléchargement de `.deb` précompilés)
+- Architectures : `aarch64`, `arm`
+- Publie via `aptly` vers `gh-pages` branch → GitHub Pages
+- Déclencheur : `workflow_dispatch`, push d'un tag `packages-*`, ou cron
+  hebdomadaire (dimanche 00:00 UTC)
 
-Read [CONTRIBUTING.md](/CONTRIBUTING.md) and [Developer's Wiki](https://github.com/termux/termux-packages/wiki) for more details.
+## Utilisation
 
-## Community
+### Build le bootstrap
+1. Va dans l'onglet **Actions** → **Build Bootstrap Archives** → **Run workflow**
+2. Attends 30–90 min par arch (compilation NDK de ~30 paquets)
+3. Une Release GitHub est créée automatiquement avec les zips
 
-The Termux Community docs are available [here](https://github.com/termux/termux-community/blob/site/site/pages/en/index.md).
+### Build les paquets
+1. Modifie `packages.txt` selon tes besoins
+2. Va dans l'onglet **Actions** → **Build Packages & Publish APT Repo** → **Run workflow**
+3. Attends plusieurs heures (dépend du nombre de paquets)
+4. Le dépôt APT est publié sur GitHub Pages
 
-**All our community members must follow the rules that are defined [here](https://github.com/termux/termux-community/blob/site/site/pages/en/rules/index.md) and any [Content Not Allowed](https://github.com/termux/termux-community/blob/site/site/pages/en/rules/index.md#8-content-not-allowed) must not be posted.**
-##
+### Configurer CodeIDE pour utiliser le dépôt
+Une fois le dépôt APT publié, configure CodeIDE avec :
+```
+pkg install wget
+echo "deb https://jjoblab.github.io/codeide-terminal-pkg/apt/codeide-main stable main" > $PREFIX/etc/apt/sources.list.d/codeide.list
+pkg update
+pkg install <paquet>
+```
 
+## Structure du repo
 
+```
+.
+├── build-package.sh          # Script principal pour compiler un paquet
+├── packages.txt              # Liste des paquets à compiler (pour build-packages.yml)
+├── repo.json                 # Configuration des dépôts APT cibles
+├── scripts/
+│   ├── properties.sh         # Variables globales (TERMUX_APP_PACKAGE=jo.codeide)
+│   ├── build-bootstraps.sh   # Build natif du bootstrap depuis les sources
+│   ├── generate-bootstraps.sh # Build du bootstrap depuis .deb précompilés (PAS UTILISÉ)
+│   ├── run-docker.sh         # Lance un build dans ghcr.io/termux/package-builder
+│   └── build/                # 92 fichiers termux_*.sh sourcés par build-package.sh
+├── packages/                 # ~1850 recettes de paquets
+├── x11-packages/             # Paquets X11
+├── root-packages/            # Paquets root
+└── disabled-packages/        # Paquets désactivés
+```
 
-## Sponsors and Funders
+## Crédits
 
-[<img alt="GitHub Accelerator" width="25%" src="site/assets/sponsors/github.png" />](https://github.com)  
-*[GitHub Accelerator](https://github.com/accelerator) ([1](https://github.blog/2023-04-12-github-accelerator-our-first-cohort-and-whats-next))*
-
-&nbsp;
-
-[<img alt="GitHub Secure Open Source Fund" width="25%" src="site/assets/sponsors/github.png" />](https://github.com)  
-*[GitHub Secure Open Source Fund](https://resources.github.com/github-secure-open-source-fund) ([1](https://github.blog/open-source/maintainers/securing-the-supply-chain-at-scale-starting-with-71-important-open-source-projects), [2](https://termux.dev/en/posts/general/2025/08/11/termux-selected-for-github-secure-open-source-fund-session-2.html))*
-
-&nbsp;
-
-[<img alt="NLnet NGI Mobifree" width="25%" src="site/assets/sponsors/nlnet-ngi-mobifree.png" />](https://nlnet.nl/mobifree)  
-*[NLnet NGI Mobifree](https://nlnet.nl/mobifree) ([1](https://nlnet.nl/news/2024/20241111-NGI-Mobifree-grants.html), [2](https://termux.dev/en/posts/general/2024/11/11/termux-selected-for-nlnet-ngi-mobifree-grant.html))*
-
-&nbsp;
-
-[<img alt="Cloudflare" width="25%" src="site/assets/sponsors/cloudflare.png" />](https://www.cloudflare.com)  
-*[Cloudflare](https://www.cloudflare.com) ([1](https://packages-cf.termux.dev))*
-
+Basé sur [termux/termux-packages](https://github.com/termux/termux-packages)
+sous licence GNU GPL v3 (cf. `LICENSE.md`).
