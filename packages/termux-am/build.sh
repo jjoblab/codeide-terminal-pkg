@@ -17,28 +17,31 @@ termux_step_post_get_source() {
         sed -i'' -E -e "s|\@TERMUX_APP_PACKAGE\@|${TERMUX_APP_PACKAGE}|g" "$TERMUX_PKG_SRCDIR/app/src/main/java/com/termux/termuxam/FakeContext.java"
 
         # CodeIDE - compatibilité avec l'image Docker ghcr.io/termux/package-builder
-        # qui contient android-35 + build-tools 37.0.1 mais PAS android-33 ni
-        # build-tools 30.0.3.
+        # qui contient android-35 + build-tools 37.0.1 + AGP 8.x.
         #
-        # Probleme 1 : AGP 7.4.2 (version de termux-am) est trop ancien. Son aapt2
-        # ne sait pas lire le format de resource table de android.jar de platform 35
-        # (erreur : "RES_TABLE_TYPE_TYPE entry offsets overlap actual entry data"
-        # + "Failed to load resources table in APK android-35/android.jar").
-        # Fix : upgrader AGP de 7.4.2 à 8.1.4 dans le build.gradle root.
+        # termux-am 0.8.0 est prévu pour AGP 7.4.2 + compileSdk 33, qui ne sont
+        # plus dans l'image Docker. 5 patchs cumulatifs sont nécessaires :
         #
-        # Probleme 2 : AGP 7.4.2 veut build-tools 30.0.3 par défaut (non installé).
-        # Fix : buildToolsVersion "37.0.0" + lintOptions pour désactiver lint.
+        # 1. AGP 7.4.2 -> 8.1.4 : l'aapt2 d'AGP 7.4.2 ne sait pas lire le format
+        #    de resource table de android-35/android.jar
+        #    (erreur : "RES_TABLE_TYPE_TYPE entry offsets overlap actual entry data")
+        # 2. compileSdkVersion 33 -> 35 : android-33 n'est pas installé
+        # 3. buildToolsVersion "37.0.0" : AGP 7.4.2 voulait 30.0.3 par défaut
+        # 4. buildFeatures { buildConfig true } : AGP 8.x a désactivé buildConfig
+        #    par défaut, mais termux-am utilise buildConfigField
+        #    (erreur : "defaultConfig contains custom BuildConfig fields, but
+        #     the feature is disabled")
+        # 5. lintOptions { checkReleaseBuilds false } : la tâche lintVitalRelease
+        #    déclenche l'install de build-tools 30.0.3
         #
-        # Probleme 3 : compileSdk 33 -> 35 (android-35 est installé).
-        #
-        # 1. Upgrader AGP 7.4.2 -> 8.1.4 (supporte compileSdk 35 + build-tools 37)
+        # 1. AGP 7.4.2 -> 8.1.4 (dans le build.gradle root)
         sed -i'' -E -e 's/com\.android\.tools\.build:gradle:7\.4\.2/com.android.tools.build:gradle:8.1.4/' "$TERMUX_PKG_SRCDIR/build.gradle"
-        # 2. compileSdkVersion 33 -> 35 (android-35 dans image Docker)
+        # 2. compileSdkVersion 33 -> 35
         sed -i'' -E -e 's/compileSdkVersion 33/compileSdkVersion 35/' "$TERMUX_PKG_SRCDIR/app/build.gradle"
-        # 3. Ajouter buildToolsVersion "37.0.0" (build-tools 37.0.1 dans image Docker)
+        # 3. buildToolsVersion "37.0.0" après compileSdkVersion
         sed -i'' -E -e 's/(compileSdkVersion 35)/\1\n\tbuildToolsVersion "37.0.0"/' "$TERMUX_PKG_SRCDIR/app/build.gradle"
-        # 4. Désactiver lint (déclenche l'install de build-tools 30.0.3)
-        sed -i'' -E -e 's/(namespace "com.termux.termuxam")/\1\n\tlintOptions { checkReleaseBuilds false }/' "$TERMUX_PKG_SRCDIR/app/build.gradle"
+        # 4+5. buildFeatures { buildConfig true } + lintOptions après namespace
+        sed -i'' -E -e 's/(namespace "com.termux.termuxam")/\1\n\tbuildFeatures { buildConfig true }\n\tlintOptions { checkReleaseBuilds false }/' "$TERMUX_PKG_SRCDIR/app/build.gradle"
 }
 
 termux_step_make() {
