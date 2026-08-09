@@ -13,6 +13,8 @@ TERMUX_PKG_CONFLICTS="termux-tools (<< 0.51)"
 _GRADLE_VERSION=8.10.2
 
 termux_step_post_get_source() {
+	# CodeIDE - compileSdk 33 -> 35 (android-35 dans image Docker)
+	sed -i'' -E -e 's/compileSdkVersion 33/compileSdkVersion 35/' "$TERMUX_PKG_SRCDIR/app/build.gradle"
 	sed -i'' -E -e "s|\@TERMUX_PREFIX\@|${TERMUX_PREFIX}|g" "$TERMUX_PKG_SRCDIR/am-libexec-packaged"
 	sed -i'' -E -e "s|\@TERMUX_APP_PACKAGE\@|${TERMUX_APP_PACKAGE}|g" "$TERMUX_PKG_SRCDIR/app/src/main/java/com/termux/termuxam/FakeContext.java"
 }
