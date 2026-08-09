@@ -20,13 +20,24 @@ termux_step_post_get_source() {
         # qui contient android-35 + build-tools 37.0.1 mais PAS android-33 ni
         # build-tools 30.0.3.
         #
-        # 1. compileSdkVersion 33 -> 35 (android-35 est installé)
-        # 2. Ajouter buildToolsVersion "37.0.0" pour empêcher Gradle d'essayer
-        #    d'installer build-tools 30.0.3 (sa version par défaut avec AGP 7.4.2)
-        # 3. Ajouter lintOptions { checkReleaseBuilds false } pour désactiver
-        #    lintVitalReportRelease qui déclenche l'install de build-tools 30.0.3
+        # Probleme 1 : AGP 7.4.2 (version de termux-am) est trop ancien. Son aapt2
+        # ne sait pas lire le format de resource table de android.jar de platform 35
+        # (erreur : "RES_TABLE_TYPE_TYPE entry offsets overlap actual entry data"
+        # + "Failed to load resources table in APK android-35/android.jar").
+        # Fix : upgrader AGP de 7.4.2 à 8.1.4 dans le build.gradle root.
+        #
+        # Probleme 2 : AGP 7.4.2 veut build-tools 30.0.3 par défaut (non installé).
+        # Fix : buildToolsVersion "37.0.0" + lintOptions pour désactiver lint.
+        #
+        # Probleme 3 : compileSdk 33 -> 35 (android-35 est installé).
+        #
+        # 1. Upgrader AGP 7.4.2 -> 8.1.4 (supporte compileSdk 35 + build-tools 37)
+        sed -i'' -E -e 's/com\.android\.tools\.build:gradle:7\.4\.2/com.android.tools.build:gradle:8.1.4/' "$TERMUX_PKG_SRCDIR/build.gradle"
+        # 2. compileSdkVersion 33 -> 35 (android-35 dans image Docker)
         sed -i'' -E -e 's/compileSdkVersion 33/compileSdkVersion 35/' "$TERMUX_PKG_SRCDIR/app/build.gradle"
+        # 3. Ajouter buildToolsVersion "37.0.0" (build-tools 37.0.1 dans image Docker)
         sed -i'' -E -e 's/(compileSdkVersion 35)/\1\n\tbuildToolsVersion "37.0.0"/' "$TERMUX_PKG_SRCDIR/app/build.gradle"
+        # 4. Désactiver lint (déclenche l'install de build-tools 30.0.3)
         sed -i'' -E -e 's/(namespace "com.termux.termuxam")/\1\n\tlintOptions { checkReleaseBuilds false }/' "$TERMUX_PKG_SRCDIR/app/build.gradle"
 }
 
