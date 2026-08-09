@@ -13,34 +13,45 @@ TERMUX_PKG_CONFLICTS="termux-tools (<< 0.51)"
 _GRADLE_VERSION=8.10.2
 
 termux_step_post_get_source() {
-	# CodeIDE - compileSdk 33 -> 35 (android-35 dans image Docker)
-	sed -i'' -E -e 's/compileSdkVersion 33/compileSdkVersion 35/' "$TERMUX_PKG_SRCDIR/app/build.gradle"
-	sed -i'' -E -e "s|\@TERMUX_PREFIX\@|${TERMUX_PREFIX}|g" "$TERMUX_PKG_SRCDIR/am-libexec-packaged"
-	sed -i'' -E -e "s|\@TERMUX_APP_PACKAGE\@|${TERMUX_APP_PACKAGE}|g" "$TERMUX_PKG_SRCDIR/app/src/main/java/com/termux/termuxam/FakeContext.java"
+        sed -i'' -E -e "s|\@TERMUX_PREFIX\@|${TERMUX_PREFIX}|g" "$TERMUX_PKG_SRCDIR/am-libexec-packaged"
+        sed -i'' -E -e "s|\@TERMUX_APP_PACKAGE\@|${TERMUX_APP_PACKAGE}|g" "$TERMUX_PKG_SRCDIR/app/src/main/java/com/termux/termuxam/FakeContext.java"
+
+        # CodeIDE - compatibilité avec l'image Docker ghcr.io/termux/package-builder
+        # qui contient android-35 + build-tools 37.0.1 mais PAS android-33 ni
+        # build-tools 30.0.3.
+        #
+        # 1. compileSdkVersion 33 -> 35 (android-35 est installé)
+        # 2. Ajouter buildToolsVersion "37.0.0" pour empêcher Gradle d'essayer
+        #    d'installer build-tools 30.0.3 (sa version par défaut avec AGP 7.4.2)
+        # 3. Ajouter lintOptions { checkReleaseBuilds false } pour désactiver
+        #    lintVitalReportRelease qui déclenche l'install de build-tools 30.0.3
+        sed -i'' -E -e 's/compileSdkVersion 33/compileSdkVersion 35/' "$TERMUX_PKG_SRCDIR/app/build.gradle"
+        sed -i'' -E -e 's/(compileSdkVersion 35)/\1\n\tbuildToolsVersion "37.0.0"/' "$TERMUX_PKG_SRCDIR/app/build.gradle"
+        sed -i'' -E -e 's/(namespace "com.termux.termuxam")/\1\n\tlintOptions { checkReleaseBuilds false }/' "$TERMUX_PKG_SRCDIR/app/build.gradle"
 }
 
 termux_step_make() {
-	# Download and use a new enough gradle version to avoid the process hanging after running:
-	termux_download \
-		https://services.gradle.org/distributions/gradle-$_GRADLE_VERSION-bin.zip \
-		$TERMUX_PKG_CACHEDIR/gradle-$_GRADLE_VERSION-bin.zip \
-		31c55713e40233a8303827ceb42ca48a47267a0ad4bab9177123121e71524c26
-	mkdir $TERMUX_PKG_TMPDIR/gradle
-	unzip -q $TERMUX_PKG_CACHEDIR/gradle-$_GRADLE_VERSION-bin.zip -d $TERMUX_PKG_TMPDIR/gradle
+        # Download and use a new enough gradle version to avoid the process hanging after running:
+        termux_download \
+                https://services.gradle.org/distributions/gradle-$_GRADLE_VERSION-bin.zip \
+                $TERMUX_PKG_CACHEDIR/gradle-$_GRADLE_VERSION-bin.zip \
+                31c55713e40233a8303827ceb42ca48a47267a0ad4bab9177123121e71524c26
+        mkdir $TERMUX_PKG_TMPDIR/gradle
+        unzip -q $TERMUX_PKG_CACHEDIR/gradle-$_GRADLE_VERSION-bin.zip -d $TERMUX_PKG_TMPDIR/gradle
 
-	# Avoid spawning the gradle daemon due to org.gradle.jvmargs
-	# being set (https://github.com/gradle/gradle/issues/1434):
-	sed -i'' -E '/^org\.gradle\.jvmargs=.*/d' gradle.properties
+        # Avoid spawning the gradle daemon due to org.gradle.jvmargs
+        # being set (https://github.com/gradle/gradle/issues/1434):
+        sed -i'' -E '/^org\.gradle\.jvmargs=.*/d' gradle.properties
 
-	export ANDROID_HOME
-	export GRADLE_OPTS="-Dorg.gradle.daemon=false -Xmx1536m -Dorg.gradle.java.home=/usr/lib/jvm/java-1.17.0-openjdk-amd64"
+        export ANDROID_HOME
+        export GRADLE_OPTS="-Dorg.gradle.daemon=false -Xmx1536m -Dorg.gradle.java.home=/usr/lib/jvm/java-1.17.0-openjdk-amd64"
 
-	$TERMUX_PKG_TMPDIR/gradle/gradle-$_GRADLE_VERSION/bin/gradle \
-		:app:assembleRelease
+        $TERMUX_PKG_TMPDIR/gradle/gradle-$_GRADLE_VERSION/bin/gradle \
+                :app:assembleRelease
 }
 
 termux_step_make_install() {
-	cp $TERMUX_PKG_SRCDIR/am-libexec-packaged $TERMUX_PREFIX/bin/am
-	mkdir -p $TERMUX_PREFIX/libexec/termux-am
-	cp $TERMUX_PKG_SRCDIR/app/build/outputs/apk/release/app-release-unsigned.apk $TERMUX_PREFIX/libexec/termux-am/am.apk
+        cp $TERMUX_PKG_SRCDIR/am-libexec-packaged $TERMUX_PREFIX/bin/am
+        mkdir -p $TERMUX_PREFIX/libexec/termux-am
+        cp $TERMUX_PKG_SRCDIR/app/build/outputs/apk/release/app-release-unsigned.apk $TERMUX_PREFIX/libexec/termux-am/am.apk
 }
