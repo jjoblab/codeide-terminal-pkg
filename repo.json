@@ -5,17 +5,5 @@
     "distribution": "stable",
     "component": "main",
     "url": "https://jjoblab.github.io/codeide-terminal-pkg/apt/codeide-main"
-  },
-  "root-packages": {
-    "name": "codeide-root",
-    "distribution": "root",
-    "component": "stable",
-    "url": "https://jjoblab.github.io/codeide-terminal-pkg/apt/codeide-root"
-  },
-  "x11-packages": {
-    "name": "codeide-x11",
-    "distribution": "x11",
-    "component": "main",
-    "url": "https://jjoblab.github.io/codeide-terminal-pkg/apt/codeide-x11"
   }
 }
