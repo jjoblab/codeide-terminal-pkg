@@ -27,6 +27,14 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Cache termux-build tarballs
+        uses: actions/cache@v4
+        with:
+          path: /home/runner/.termux-build
+          key: termux-build-${{ matrix.arch }}-${{ github.run_id }}
+          restore-keys: |
+            termux-build-${{ matrix.arch }}-
+
       - name: Build bootstrap natif (jo.codeide, depuis les sources)
         # ★ CodeIDE — build NATIF depuis les sources de ce repo, avec
         # TERMUX_APP_PACKAGE=jo.codeide (cf. scripts/properties.sh).
@@ -47,6 +55,8 @@ jobs:
         # ghcr.io/termux/package-builder (NDK/SDK Android préinstallés),
         # montée sur /home/builder/termux-packages — exactement ce que fait
         # scripts/run-docker.sh.
+        env:
+          TERMUX_DOCKER_RUN_EXTRA_ARGS: "--volume /home/runner/.termux-build:/home/builder/.termux-build"
         run: ./scripts/run-docker.sh ./scripts/build-bootstraps.sh --architectures ${{ matrix.arch }}
 
       - name: Verify zip
