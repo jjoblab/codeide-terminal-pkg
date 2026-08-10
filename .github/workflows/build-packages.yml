@@ -35,7 +35,7 @@ jobs:
         id: pkglist
         run: |
           if [ -f packages.txt ]; then
-            PACKAGES=$(tr '\n' ' ' < packages.txt)
+            PACKAGES=$(grep -vE '^[[:space:]]*(#|$)' packages.txt | tr '\n' ' ')
             echo "packages=$PACKAGES" >> $GITHUB_OUTPUT
             echo "=== Packages à builder pour ${{ matrix.target_arch }} ==="
             echo "$PACKAGES"
