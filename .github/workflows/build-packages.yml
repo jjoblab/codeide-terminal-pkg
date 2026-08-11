@@ -53,6 +53,12 @@ jobs:
           key: termux-build-${{ matrix.target_arch }}-${{ hashFiles('packages.txt', 'packages/**/build.sh') }}
           restore-keys: |
             termux-build-${{ matrix.target_arch }}-
+            
+       - name: Prepare host mount directories
+        run: |
+          sudo mkdir -p /data
+          sudo chown -R "$(id -u):$(id -g)" /data
+          mkdir -p ~/.termux-build
 
       - name: Build packages (natif jo.codeide, depuis les sources)
         # ★ Build NATIF — sans -I. On NE télécharge PAS de .deb précompilés
