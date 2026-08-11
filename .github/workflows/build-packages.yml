@@ -44,15 +44,27 @@ jobs:
             exit 1
           fi
 
+      - name: Cache termux build directories
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.termux-build
+            /data
+          key: termux-build-${{ matrix.target_arch }}-${{ hashFiles('packages.txt', 'packages/**/build.sh') }}
+          restore-keys: |
+            termux-build-${{ matrix.target_arch }}-
+
       - name: Build packages (natif jo.codeide, depuis les sources)
         # ★ Build NATIF — sans -I. On NE télécharge PAS de .deb précompilés
         # depuis termux.dev (qui contiendraient /data/data/com.termux/...).
         # Toutes les dépendances sont compilées depuis les sources de ce repo.
         # C'est plus long mais garantit un dépôt APT 100% jo.codeide.
+        # -m monte ~/.termux-build et /data depuis l'hôte (cf. étape de cache
+        # ci-dessus) pour réutiliser les paquets déjà construits.
         run: |
           set -euo pipefail
           mkdir -p ./debs
-          ./scripts/run-docker.sh ./build-package.sh -a ${{ matrix.target_arch }} ${{ steps.pkglist.outputs.packages }}
+          ./scripts/run-docker.sh -m ./build-package.sh -a ${{ matrix.target_arch }} ${{ steps.pkglist.outputs.packages }}
 
       - name: Collect built .deb
         run: |
