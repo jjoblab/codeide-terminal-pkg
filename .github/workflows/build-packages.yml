@@ -53,8 +53,8 @@ jobs:
           key: termux-build-${{ matrix.target_arch }}-${{ hashFiles('packages.txt', 'packages/**/build.sh') }}
           restore-keys: |
             termux-build-${{ matrix.target_arch }}-
-            
-       - name: Prepare host mount directories
+
+      - name: Prepare host mount directories
         run: |
           sudo mkdir -p /data
           sudo chown -R "$(id -u):$(id -g)" /data
